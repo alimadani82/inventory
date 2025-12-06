@@ -1,0 +1,10 @@
+[
+  {
+    "product_id": "PROD-1",
+    "material_id": "MAT-1",
+    "material_name": "آرد",
+    "amount_per_unit": 1,
+    "unit": "kg",
+    "is_active": 1
+  }
+]
