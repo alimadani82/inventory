@@ -9,7 +9,7 @@ const recipes: Record<string, RecipeRow[]> = {
       material_name: "Coffee Beans",
       amount_per_unit: 18,
       unit: "g",
-      is_active: 1
+      is_active: true
     }
   ],
   latte: [
@@ -19,7 +19,7 @@ const recipes: Record<string, RecipeRow[]> = {
       material_name: "Coffee Beans",
       amount_per_unit: 18,
       unit: "g",
-      is_active: 1
+      is_active: true
     },
     {
       product_id: "latte",
@@ -27,7 +27,7 @@ const recipes: Record<string, RecipeRow[]> = {
       material_name: "Whole Milk",
       amount_per_unit: 220,
       unit: "ml",
-      is_active: 1
+      is_active: true
     },
     {
       product_id: "latte",
@@ -35,7 +35,7 @@ const recipes: Record<string, RecipeRow[]> = {
       material_name: "Vanilla Syrup",
       amount_per_unit: 15,
       unit: "ml",
-      is_active: 1
+      is_active: true
     }
   ],
   mocha: [
@@ -45,7 +45,7 @@ const recipes: Record<string, RecipeRow[]> = {
       material_name: "Coffee Beans",
       amount_per_unit: 18,
       unit: "g",
-      is_active: 1
+      is_active: true
     },
     {
       product_id: "mocha",
@@ -53,7 +53,7 @@ const recipes: Record<string, RecipeRow[]> = {
       material_name: "Whole Milk",
       amount_per_unit: 200,
       unit: "ml",
-      is_active: 1
+      is_active: true
     },
     {
       product_id: "mocha",
@@ -61,7 +61,7 @@ const recipes: Record<string, RecipeRow[]> = {
       material_name: "Chocolate Sauce",
       amount_per_unit: 25,
       unit: "ml",
-      is_active: 1
+      is_active: true
     }
   ],
   sandwich: [
@@ -71,7 +71,7 @@ const recipes: Record<string, RecipeRow[]> = {
       material_name: "Ciabatta Bread",
       amount_per_unit: 1,
       unit: "piece",
-      is_active: 1
+      is_active: true
     },
     {
       product_id: "sandwich",
@@ -79,7 +79,7 @@ const recipes: Record<string, RecipeRow[]> = {
       material_name: "Basil Pesto",
       amount_per_unit: 25,
       unit: "g",
-      is_active: 1
+      is_active: true
     }
   ],
   salad: [
@@ -89,7 +89,7 @@ const recipes: Record<string, RecipeRow[]> = {
       material_name: "Mixed Greens",
       amount_per_unit: 70,
       unit: "g",
-      is_active: 1
+      is_active: true
     }
   ]
 };

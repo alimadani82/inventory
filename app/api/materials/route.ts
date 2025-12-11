@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getMaterials } from "@/lib/googleSheets";
+import { getMaterials } from "@/lib/localData";
 
 export async function GET() {
   try {

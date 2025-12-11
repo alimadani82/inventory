@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getMenuItems } from "@/lib/googleSheets";
+import { getMenuItems } from "@/lib/localData";
 
 export async function GET() {
   try {

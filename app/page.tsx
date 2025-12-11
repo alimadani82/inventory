@@ -20,32 +20,36 @@ import { Spinner } from "@/components/ui/spinner";
 import { Badge } from "@/components/ui/badge";
 
 const operatorSchema = z.object({
-  operator_name: z.string().min(1, "نام اپراتور الزامی است")
+  operator_name: z.string().min(1, "نام اپراتور را وارد کنید")
 });
 
 const steps = [
-  { id: 1, title: "انتخاب محصولات", description: "انتخاب آیتم و تعداد" },
-  { id: 2, title: "مواد اولیه", description: "بازبینی و ویرایش مصرف" },
+  { id: 1, title: "انتخاب محصولات", description: "اقلام تولید را وارد کنید" },
+  {
+    id: 2,
+    title: "مواد موردنیاز",
+    description: "مواد مصرفی پیشنهاد شده را بررسی و اصلاح کنید"
+  },
   { id: 3, title: "جمع‌بندی", description: "تایید و ثبت" }
 ];
 
 const fetchMenuItems = async (): Promise<Product[]> => {
   const res = await fetch("/api/menu-items");
-  if (!res.ok) throw new Error("خطا در دریافت منو");
+  if (!res.ok) throw new Error("Failed to load menu items");
   const data = await res.json();
   return data.items ?? [];
 };
 
 const fetchMaterials = async (): Promise<Material[]> => {
   const res = await fetch("/api/materials");
-  if (!res.ok) throw new Error("خطا در دریافت موجودی");
+  if (!res.ok) throw new Error("Failed to load materials");
   const data = await res.json();
   return data.materials ?? [];
 };
 
 const fetchRecipes = async (productId: string): Promise<RecipeRow[]> => {
   const res = await fetch(`/api/recipes?productId=${productId}`);
-  if (!res.ok) throw new Error("خطا در دریافت دستور تولید");
+  if (!res.ok) throw new Error("Failed to load recipes");
   const data = await res.json();
   return data.recipes ?? [];
 };
@@ -55,6 +59,8 @@ export default function Home() {
   const [search, setSearch] = useState("");
   const [showExtraModal, setShowExtraModal] = useState(false);
   const [extraSearch, setExtraSearch] = useState("");
+  const [newExtraName, setNewExtraName] = useState("");
+  const [newExtraUnit, setNewExtraUnit] = useState("");
   const [submitMessage, setSubmitMessage] = useState("");
   const [submitError, setSubmitError] = useState("");
 
@@ -65,6 +71,7 @@ export default function Home() {
     setMaterials,
     updateMaterialAmount,
     addExtraMaterial,
+    addCustomExtraMaterial,
     reset
   } = useProductionStore();
 
@@ -119,7 +126,7 @@ export default function Home() {
   const filteredMenu = useMemo(() => {
     const data = menuQuery.data ?? [];
     return data
-      .filter((item) => item.is_active === 1)
+      .filter((item) => Boolean(item.is_active))
       .filter((item) =>
         search ? item.name.toLowerCase().includes(search) : true
       );
@@ -132,7 +139,7 @@ export default function Home() {
 
     selectedProductsArr.forEach((product) => {
       const rows = (recipeQuery.data?.[product.id] ?? []).filter(
-        (row) => row.is_active === 1
+        (row) => Boolean(row.is_active)
       );
 
       rows.forEach((row) => {
@@ -140,8 +147,7 @@ export default function Home() {
         if (aggregated[row.material_id]) {
           aggregated[row.material_id] = {
             ...aggregated[row.material_id],
-            suggested:
-              aggregated[row.material_id].suggested + suggested,
+            suggested: aggregated[row.material_id].suggested + suggested,
             final: aggregated[row.material_id].final + suggested,
             sourceProducts: [
               ...new Set([
@@ -231,7 +237,9 @@ export default function Home() {
   });
 
   const disabledNextStep =
-    step === 1 ? selectedProductsArr.length === 0 : step === 2 && materialList.length === 0;
+    step === 1
+      ? selectedProductsArr.length === 0
+      : step === 2 && materialList.length === 0;
 
   const availableExtras = (inventoryQuery.data ?? []).filter(
     (mat) => !materials[mat.id]
@@ -241,14 +249,19 @@ export default function Home() {
     <main className="container mx-auto max-w-6xl space-y-6 py-8">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <p className="text-sm font-semibold text-primary">فرآیند تولید کافه</p>
-          <h1 className="text-2xl font-bold">برنامه‌ریزی تولید و مصرف مواد</h1>
+          <p className="text-sm font-semibold text-primary">
+            ثبت تولید و مصرف مواد
+          </p>
+          <h1 className="text-2xl font-bold">
+            مدیریت تولید کافه و ثبت مواد مصرفی
+          </h1>
           <p className="text-sm text-muted-foreground">
-            متصل به Google Sheets و در صورت نیاز وب‌هوک n8n.
+            Menu and materials are local; recipes and production log save to
+            Supabase with an optional n8n webhook.
           </p>
         </div>
         <Badge variant="secondary" className="self-start">
-          اتصال مستقیم به شیت
+          نسخه آزمایشی
         </Badge>
       </div>
 
@@ -259,11 +272,11 @@ export default function Home() {
           <div className="space-y-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <SearchInput
-                placeholder="جستجوی نوشیدنی یا غذا..."
+                placeholder="جستجوی محصول..."
                 onSearch={setSearch}
               />
               <p className="text-sm text-muted-foreground">
-                انتخاب شده:{" "}
+                محصولات انتخاب‌شده:{" "}
                 <span className="font-semibold text-foreground">
                   {selectedProductsArr.length}
                 </span>
@@ -277,7 +290,7 @@ export default function Home() {
                 disabled={disabledNextStep}
                 className="inline-flex items-center gap-1"
               >
-                ادامه
+                مرحله بعد
                 <ArrowRight className="h-4 w-4" />
               </Button>
             </div>
@@ -291,12 +304,12 @@ export default function Home() {
             {menuQuery.isError && (
               <div className="flex items-center gap-2 rounded-lg border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
                 <AlertCircle className="h-4 w-4" />
-                بارگذاری منو انجام نشد.
+                خطا در دریافت منو.
               </div>
             )}
             {!menuQuery.isLoading && filteredMenu.length === 0 && (
               <div className="rounded-lg border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">
-                چیزی پیدا نشد. دوباره جستجو کنید.
+                محصولی یافت نشد.
               </div>
             )}
 
@@ -318,22 +331,22 @@ export default function Home() {
             {(recipeQuery.isLoading || inventoryQuery.isLoading) && (
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Spinner />
-                در حال محاسبه مواد...
+                در حال بارگذاری مواد...
               </div>
             )}
             {(recipeQuery.isError || inventoryQuery.isError) && (
               <div className="flex items-center gap-2 rounded-lg border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
                 <AlertCircle className="h-4 w-4" />
-                دریافت دستور یا موجودی انجام نشد.
+                خطا در دریافت مواد یا دستورالعمل.
               </div>
             )}
 
             <div className="flex flex-wrap items-center gap-3">
               <div className="flex items-center gap-2 rounded-lg bg-muted px-3 py-2 text-xs">
-                محصولات انتخاب‌شده: {selectedProductsArr.length}
+                تعداد محصولات انتخابی: {selectedProductsArr.length}
               </div>
               <div className="flex items-center gap-2 rounded-lg bg-muted px-3 py-2 text-xs">
-                مواد اولیه: {materialList.length}
+                تعداد مواد: {materialList.length}
               </div>
               <Button
                 type="button"
@@ -399,10 +412,10 @@ export default function Home() {
 
         <div className="mt-6 flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            مرحله {step} از ۳
+            مرحله {step} از 3
             {step === 2 && (
               <span className="text-xs text-orange-500">
-                مقادیر پیشنهادی قابل ویرایش هستند.
+                لطفا مقادیر مواد را بررسی و در صورت نیاز اصلاح کنید.
               </span>
             )}
           </div>
@@ -425,7 +438,7 @@ export default function Home() {
                 disabled={disabledNextStep}
                 className="inline-flex items-center gap-1"
               >
-                ادامه
+                مرحله بعد
                 <ArrowRight className="h-4 w-4" />
               </Button>
             )}
@@ -439,10 +452,46 @@ export default function Home() {
         title="افزودن ماده اضافی"
       >
         <Input
-          placeholder="جستجوی موجودی..."
+          placeholder="جستجوی ماده..."
           value={extraSearch}
           onChange={(e) => setExtraSearch(e.target.value)}
         />
+
+        <div className="space-y-2 rounded-lg border p-3">
+          <p className="text-xs font-semibold text-muted-foreground">
+            افزودن ماده جدید خارج از لیست
+          </p>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <Input
+              placeholder="نام ماده"
+              value={newExtraName}
+              onChange={(e) => setNewExtraName(e.target.value)}
+            />
+            <Input
+              placeholder="واحد (مثلا kg یا pcs)"
+              value={newExtraUnit}
+              onChange={(e) => setNewExtraUnit(e.target.value)}
+            />
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            className="w-full sm:w-auto"
+            disabled={!newExtraName.trim()}
+            onClick={() => {
+              const name = newExtraName.trim();
+              const unit = newExtraUnit.trim() || "";
+              if (!name) return;
+              addCustomExtraMaterial(name, unit);
+              setNewExtraName("");
+              setNewExtraUnit("");
+              setShowExtraModal(false);
+            }}
+          >
+            افزودن ماده جدید
+          </Button>
+        </div>
+
         <div className="max-h-64 space-y-2 overflow-auto pr-1">
           {availableExtras
             .filter((mat) =>
@@ -471,12 +520,13 @@ export default function Home() {
             ))}
           {availableExtras.length === 0 && (
             <p className="text-sm text-muted-foreground">
-              همه مواد اضافه شده‌اند.
+              ماده‌ای خارج از لیست موجودی نیست.
             </p>
           )}
         </div>
         <p className="text-xs text-muted-foreground">
-          مواد اضافه‌شده با مقدار صفر شروع می‌شوند؛ مقدار دلخواه را وارد کنید.
+          مواد اضافی برای ثبت و ردیابی تولید ذخیره می‌شوند و می‌توانید بعدا
+          مقدار مصرف را ویرایش کنید.
         </p>
       </Modal>
     </main>

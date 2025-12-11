@@ -14,12 +14,13 @@ export type Material = {
 };
 
 export type RecipeRow = {
+  id?: number;
   product_id: string;
   material_id: string;
   material_name: string;
   amount_per_unit: number;
   unit: string;
-  is_active: number;
+  is_active: boolean;
 };
 
 export type ConsumedMaterial = {

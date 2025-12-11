@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getRecipesByProductId } from "@/lib/googleSheets";
+import { getRecipesByProductId } from "@/lib/recipes";
 
 export async function GET(req: NextRequest) {
   try {

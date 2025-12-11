@@ -3,15 +3,15 @@ import "server-only";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import {
-  appendProductionLogRows,
-  createBatchId,
-  updateInventoryStocks
-} from "@/lib/googleSheets";
+  insertProductionLogRows,
+  ProductionLogRow
+} from "@/lib/productionLog";
 
 const payloadSchema = z.object({
   timestamp: z.string().datetime(),
   operator_name: z.string().min(1),
   source: z.literal("webapp"),
+  batch_id: z.string().optional(),
   products: z
     .array(
       z.object({
@@ -43,38 +43,31 @@ export async function POST(req: Request) {
       );
     }
     const payload = parsed.data;
-    const batchId = createBatchId();
+    const eventTime = new Date().toISOString();
+    const batchId = payload.batch_id ?? crypto.randomUUID();
 
     const productsJoined = payload.products.map((p) => p.id).join(",");
     const productNames = payload.products.map((p) => p.name).join(",");
-    const productQuantities = payload.products.map((p) => p.qty).join(",");
+    const totalQuantity = payload.products.reduce(
+      (sum, p) => sum + p.qty,
+      0
+    );
 
-    const rows = payload.consumed_materials.map((mat) => [
-      payload.timestamp,
-      batchId,
-      payload.operator_name,
-      productsJoined,
-      productNames,
-      productQuantities,
-      mat.id,
-      mat.name,
-      mat.amount,
-      mat.unit,
-      payload.source
-    ]);
+    const rows: ProductionLogRow[] = payload.consumed_materials.map((mat) => ({
+      event_time: eventTime,
+      batch_id: batchId,
+      form_label: payload.operator_name,
+      product_id: productsJoined,
+      product_name: productNames,
+      quantity: totalQuantity,
+      material_id: mat.id,
+      material_name: mat.name,
+      material_amount: mat.amount,
+      unit: mat.unit,
+      source: payload.source
+    }));
 
-    await appendProductionLogRows(rows);
-
-    if (process.env.UPDATE_INVENTORY === "true") {
-      try {
-        await updateInventoryStocks(payload.consumed_materials);
-      } catch (err: any) {
-        return NextResponse.json(
-          { message: err?.message ?? "Failed to update inventory" },
-          { status: 400 }
-        );
-      }
-    }
+    await insertProductionLogRows(rows);
 
     const webhook = process.env.N8N_WEBHOOK_URL;
     if (webhook) {

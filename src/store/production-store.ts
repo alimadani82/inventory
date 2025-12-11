@@ -21,6 +21,7 @@ type ProductionState = {
   setMaterials: (materials: MaterialUsage[]) => void;
   updateMaterialAmount: (id: string, amount: number) => void;
   addExtraMaterial: (material: Material) => void;
+  addCustomExtraMaterial: (name: string, unit: string) => void;
   reset: () => void;
 };
 
@@ -69,6 +70,28 @@ export const useProductionStore = create<ProductionState>((set) => ({
             suggested: 0,
             final: 0,
             base_unit: material.base_unit,
+            isExtra: true,
+            sourceProducts: []
+          }
+        }
+      };
+    }),
+  addCustomExtraMaterial: (name, unit) =>
+    set((state) => {
+      const id = `custom-${Date.now()}-${Math.random()
+        .toString(36)
+        .slice(2, 8)}`;
+      if (state.materials[id]) return state;
+      return {
+        materials: {
+          ...state.materials,
+          [id]: {
+            id,
+            name,
+            unit,
+            suggested: 0,
+            final: 0,
+            base_unit: unit,
             isExtra: true,
             sourceProducts: []
           }

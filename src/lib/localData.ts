@@ -1,10 +1,6 @@
 import "server-only";
 
-import { google, sheets_v4 } from "googleapis";
-import { nanoid } from "nanoid";
-import fs from "fs";
-import path from "path";
-import { ConsumedMaterial, Material, Product, RecipeRow } from "@/types";
+import { Material, Product } from "@/types";
 
 type CacheEntry<T> = { value: T; timestamp: number };
 
@@ -13,8 +9,6 @@ const TTL_MS = 300_000; // 5 minute cache for menu/materials
 const cache: {
   menu?: CacheEntry<Product[]>;
   materials?: CacheEntry<Material[]>;
-  recipes?: CacheEntry<RecipeRow[]>;
-  localRecipes?: CacheEntry<RecipeRow[]>;
 } = {};
 
 const LOCAL_MENU_RAW = `
@@ -268,83 +262,6 @@ const LOCAL_MATERIALS: Material[] = LOCAL_MATERIALS_RAW.trim()
     return { id, name, base_unit };
   });
 
-let sheetsApi: sheets_v4.Sheets | null = null;
-
-function requireEnv(name: string) {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(`Missing env var ${name}`);
-  }
-  return value;
-}
-
-function getServiceAccountKey(): string {
-  const base64 = process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY_BASE64;
-  if (base64) {
-    const decoded = Buffer.from(base64, "base64").toString("utf-8");
-    return decoded.replace(/\r\n/g, "\n");
-  }
-  const raw = requireEnv("GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY");
-  return raw.replace(/\\n/g, "\n").replace(/\r\n/g, "\n");
-}
-
-function getAuth() {
-  const clientEmail = requireEnv("GOOGLE_SERVICE_ACCOUNT_EMAIL");
-  const privateKey = getServiceAccountKey();
-
-  return new google.auth.JWT({
-    email: clientEmail,
-    key: privateKey,
-    scopes: ["https://www.googleapis.com/auth/spreadsheets"]
-  });
-}
-
-function getSheets() {
-  if (sheetsApi) return sheetsApi;
-  const auth = getAuth();
-  sheetsApi = google.sheets({ version: "v4", auth });
-  return sheetsApi;
-}
-
-function loadLocalRecipes(): RecipeRow[] | null {
-  if (process.env.USE_LOCAL_RECIPES !== "true") return null;
-  const localPath = process.env.LOCAL_RECIPES_PATH || "local-recipes.json";
-  const absPath = path.isAbsolute(localPath)
-    ? localPath
-    : path.join(process.cwd(), localPath);
-
-  if (!fs.existsSync(absPath)) {
-    console.warn(`Local recipes file not found at ${absPath}`);
-    return [];
-  }
-
-  try {
-    const raw = fs.readFileSync(absPath, "utf-8");
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.map((r: any) => ({
-      ...r,
-      amount_per_unit: toNumber(r.amount_per_unit),
-      is_active: toNumber(r.is_active ?? 0)
-    }));
-  } catch (err) {
-    console.error("Failed to read local recipes", err);
-    return [];
-  }
-}
-
-function parseRows<T extends Record<string, any>>(values: string[][]): T[] {
-  if (!values.length) return [];
-  const headers = values[0];
-  return values.slice(1).map((row) => {
-    const obj: Record<string, any> = {};
-    headers.forEach((header, idx) => {
-      obj[header.trim()] = row[idx];
-    });
-    return obj as T;
-  });
-}
-
 function toNumber(value: any) {
   const num = Number(value);
   return Number.isFinite(num) ? num : 0;
@@ -356,7 +273,7 @@ export async function getMenuItems(): Promise<Product[]> {
     return cache.menu.value;
   }
 
-  // Use local static menu to avoid Google Sheets call
+  // Use local static menu
   cache.menu = { value: LOCAL_MENU, timestamp: now };
   return LOCAL_MENU;
 }
@@ -369,146 +286,4 @@ export async function getMaterials(): Promise<Material[]> {
 
   cache.materials = { value: LOCAL_MATERIALS, timestamp: now };
   return LOCAL_MATERIALS;
-}
-
-export async function getRecipesByProductId(
-  productId: string
-): Promise<RecipeRow[]> {
-  const now = Date.now();
-  if (cache.recipes && now - cache.recipes.timestamp < TTL_MS) {
-    return cache.recipes.value
-      .filter((r) => r.product_id === productId)
-      .filter((r) => toNumber((r as any).is_active ?? 0) === 1);
-  }
-
-  if (process.env.USE_LOCAL_RECIPES === "true") {
-    if (!cache.localRecipes || now - cache.localRecipes.timestamp >= TTL_MS) {
-      const local = loadLocalRecipes() ?? [];
-      cache.localRecipes = { value: local, timestamp: now };
-    }
-    return (cache.localRecipes?.value ?? [])
-      .filter((r) => r.product_id === productId)
-      .filter((r) => toNumber((r as any).is_active ?? 0) === 1);
-  }
-
-  const sheets = getSheets();
-  const spreadsheetId = requireEnv("GOOGLE_SHEETS_SPREADSHEET_ID");
-  const resp = await sheets.spreadsheets.values.get({
-    spreadsheetId,
-    range: "Recipes!A1:F",
-    valueRenderOption: "UNFORMATTED_VALUE"
-  });
-
-  const rows = parseRows<RecipeRow>(resp.data.values ?? []).map((r: any) => ({
-    ...r,
-    amount_per_unit: toNumber(r.amount_per_unit),
-    is_active: toNumber(r.is_active ?? 0)
-  }));
-
-  cache.recipes = { value: rows, timestamp: now };
-
-  return rows
-    .filter((r) => r.product_id === productId)
-    .filter((r) => toNumber((r as any).is_active ?? 0) === 1);
-}
-
-export async function appendProductionLogRows(rows: string[][]) {
-  const sheets = getSheets();
-  const spreadsheetId = requireEnv("GOOGLE_SHEETS_SPREADSHEET_ID");
-
-  await sheets.spreadsheets.values.append({
-    spreadsheetId,
-    range: "ProductionLog!A1",
-    valueInputOption: "USER_ENTERED",
-    requestBody: {
-      values: rows
-    }
-  });
-}
-
-export async function updateInventoryStocks(
-  consumed: ConsumedMaterial[]
-): Promise<void> {
-  if (!consumed.length) return;
-
-  const sheets = getSheets();
-  const spreadsheetId = requireEnv("GOOGLE_SHEETS_SPREADSHEET_ID");
-  const resp = await sheets.spreadsheets.values.get({
-    spreadsheetId,
-    range: "Inventory!A1:Z"
-  });
-  const values = resp.data.values ?? [];
-  if (!values.length) throw new Error("Inventory sheet is empty");
-
-  const headers = values[0];
-  const dataRows = values.slice(1);
-  const idIdx = headers.indexOf("id");
-  const baseUnitIdx = headers.indexOf("base_unit");
-  const currentStockIdx = headers.indexOf("current_stock");
-
-  if (idIdx === -1 || baseUnitIdx === -1 || currentStockIdx === -1) {
-    throw new Error("Inventory sheet missing required headers");
-  }
-
-  const rowMap = new Map<
-    string,
-    { rowNumber: number; baseUnit: string; currentStock: number }
-  >();
-
-  dataRows.forEach((row, idx) => {
-    const id = row[idIdx];
-    if (!id) return;
-    rowMap.set(id, {
-      rowNumber: idx + 2, // +2 for 1-based index and header row
-      baseUnit: row[baseUnitIdx],
-      currentStock: toNumber(row[currentStockIdx])
-    });
-  });
-
-  const updates: { range: string; values: any[][] }[] = [];
-
-  consumed.forEach((item) => {
-    const found = rowMap.get(item.id);
-    if (!found) {
-      throw new Error(`Material ${item.id} not found in Inventory sheet`);
-    }
-    if (found.baseUnit && item.unit && found.baseUnit !== item.unit) {
-      throw new Error(
-        `Unit mismatch for ${item.id}: expected ${found.baseUnit}, got ${item.unit}`
-      );
-    }
-    const nextStock = found.currentStock - item.amount;
-    updates.push({
-      range: `Inventory!${columnLetter(
-        currentStockIdx + 1
-      )}${found.rowNumber}`,
-      values: [[nextStock]]
-    });
-  });
-
-  if (updates.length) {
-    await sheets.spreadsheets.values.batchUpdate({
-      spreadsheetId,
-      requestBody: {
-        valueInputOption: "USER_ENTERED",
-        data: updates
-      }
-    });
-    cache.materials = undefined; // bust cache
-  }
-}
-
-export function createBatchId() {
-  return nanoid(10);
-}
-
-function columnLetter(column: number): string {
-  let temp = "";
-  let col = column;
-  while (col > 0) {
-    let rem = (col - 1) % 26;
-    temp = String.fromCharCode(65 + rem) + temp;
-    col = Math.floor((col - rem) / 26);
-  }
-  return temp;
 }
